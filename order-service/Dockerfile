@@ -4,10 +4,16 @@
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /build
 COPY pom.xml .
+# The parent pom.xml lists all five modules, so the whole tree needs to be
+# present for Maven's reactor to resolve even though -pl/-am below only
+# actually *builds* common-events + order-service.
 COPY common-events ./common-events
 COPY order-service ./order-service
+COPY inventory-service ./inventory-service
+COPY payment-service ./payment-service
+COPY shipping-service ./shipping-service
 # -pl builds only this module; -am ("also make") builds its dependencies
-# (common-events) first. Avoids pulling in the other three services' code.
+# (common-events) first.
 RUN mvn -q -pl order-service -am package -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
