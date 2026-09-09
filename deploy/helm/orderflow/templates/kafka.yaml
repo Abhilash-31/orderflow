@@ -51,39 +51,33 @@ spec:
             # leaving headroom for metaspace/direct buffers/page cache.
             - name: KAFKA_HEAP_OPTS
               value: "-Xmx512m -Xms512m"
-          # `kafka-topics.sh` launches a brand-new JVM on every single probe
-          # invocation, which routinely takes several seconds — but exec
-          # probes default to a 1s timeout. Without an explicit
-          # timeoutSeconds here, every probe run was getting killed by its
-          # own timeout before the JVM even finished starting, so the
-          # broker never posted enough consecutive successes and kept
-          # getting SIGTERM'd (exit 143) and restarted by the kubelet after
-          # a few "failed liveness probe" events — a genuinely healthy
-          # broker, crash-looped by a probe that was too impatient to ever
-          # pass. Confirmed via `kubectl describe pod` showing
-          # "Last State: Terminated, Reason: Error, Exit Code: 143" plus
-          # repeated "command timed out ... after 1s" events.
+          # An exec probe running `kafka-topics.sh` launches a brand-new JVM
+          # on every single tick — first tried with a 1s timeout (too short
+          # even to start a JVM: crash-looped in ~72s), then bumped to 15s,
+          # which STILL timed out ("command timed out ... after 15s") after
+          # the broker ran a genuinely healthy 170s. The real problem isn't
+          # the timeout value: GitHub-hosted runners are 2 vCPUs, and this
+          # single CPU budget is shared across the broker, 4 Java services
+          # and Postgres in the kind cluster — spawning a fresh JVM every
+          # probe tick just to check health is too heavy for that budget,
+          # no matter how generous the timeout. A tcpSocket probe just
+          # checks that Kafka's listener port is open — no JVM spawn, no
+          # meaningful CPU cost — which is both cheaper and, once the
+          # broker logs "Awaiting socket connections on 0.0.0.0:9092", an
+          # accurate enough signal that it's up.
           readinessProbe:
-            exec:
-              command:
-                - /opt/kafka/bin/kafka-topics.sh
-                - --bootstrap-server
-                - localhost:9092
-                - --list
-            initialDelaySeconds: 15
-            periodSeconds: 20
-            timeoutSeconds: 15
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
             failureThreshold: 6
           livenessProbe:
-            exec:
-              command:
-                - /opt/kafka/bin/kafka-topics.sh
-                - --bootstrap-server
-                - localhost:9092
-                - --list
+            tcpSocket:
+              port: 9092
             initialDelaySeconds: 45
-            periodSeconds: 20
-            timeoutSeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
             failureThreshold: 6
           resources:
             {{- toYaml .Values.kafka.resources | nindent 12 }}
