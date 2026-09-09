@@ -90,13 +90,6 @@ The integration tests use Testcontainers, which needs Docker — they spin up re
 - **API Gateway** (Spring Cloud Gateway) as a single entry point instead of hitting each service's port directly.
 - **Saga orchestrator** as an alternative to the current choreography implementation, to demonstrate both patterns.
 
-## Resume bullet points (draft — tune once you have the K8s/Terraform phase done too)
-
-- Designed and built a distributed order-fulfillment platform in Java 21/Spring Boot using Kafka-based choreographed Sagas across four microservices, each with an independently owned Postgres database.
-- Implemented an oversell-safe inventory reservation mechanism using atomic conditional SQL updates, verified under concurrent load with a Testcontainers-based test proving exactly one of ten simultaneous requests for the last unit of stock succeeds.
-- Built compensating-transaction logic (inventory release, payment refund) for Saga failure paths, and a Kafka consumer retry/backoff policy to handle out-of-order cross-topic event delivery.
-- Containerized all services with multi-stage Docker builds and a Docker Compose environment; set up a GitHub Actions CI pipeline running Testcontainers-backed integration tests on every push.
-
 ## Module layout
 
 ```
