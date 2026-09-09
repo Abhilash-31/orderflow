@@ -46,14 +46,23 @@ spec:
               value: "1"
             - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
               value: "true"
-            # The Kafka launch script defaults to `-Xmx1G -Xms1G` whenever
-            # this isn't set — which, combined with the container's memory
-            # *limit* below, was getting the broker OOMKilled by the kernel
-            # shortly after a perfectly clean startup (no heap headroom left
-            # for metaspace/direct buffers/page cache). Pin it well under
-            # the limit instead.
+            # Pins the heap comfortably under the container's memory limit
+            # below (the launch script otherwise defaults to -Xmx1G -Xms1G),
+            # leaving headroom for metaspace/direct buffers/page cache.
             - name: KAFKA_HEAP_OPTS
               value: "-Xmx512m -Xms512m"
+          # `kafka-topics.sh` launches a brand-new JVM on every single probe
+          # invocation, which routinely takes several seconds — but exec
+          # probes default to a 1s timeout. Without an explicit
+          # timeoutSeconds here, every probe run was getting killed by its
+          # own timeout before the JVM even finished starting, so the
+          # broker never posted enough consecutive successes and kept
+          # getting SIGTERM'd (exit 143) and restarted by the kubelet after
+          # a few "failed liveness probe" events — a genuinely healthy
+          # broker, crash-looped by a probe that was too impatient to ever
+          # pass. Confirmed via `kubectl describe pod` showing
+          # "Last State: Terminated, Reason: Error, Exit Code: 143" plus
+          # repeated "command timed out ... after 1s" events.
           readinessProbe:
             exec:
               command:
@@ -62,7 +71,8 @@ spec:
                 - localhost:9092
                 - --list
             initialDelaySeconds: 15
-            periodSeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 15
             failureThreshold: 6
           livenessProbe:
             exec:
@@ -71,8 +81,10 @@ spec:
                 - --bootstrap-server
                 - localhost:9092
                 - --list
-            initialDelaySeconds: 30
-            periodSeconds: 15
+            initialDelaySeconds: 45
+            periodSeconds: 20
+            timeoutSeconds: 15
+            failureThreshold: 6
           resources:
             {{- toYaml .Values.kafka.resources | nindent 12 }}
 
