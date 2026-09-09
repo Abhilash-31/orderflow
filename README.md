@@ -1,5 +1,7 @@
 # OrderFlow
 
+[![CI](https://github.com/Abhilash-31/orderflow/actions/workflows/ci.yml/badge.svg)](https://github.com/Abhilash-31/orderflow/actions/workflows/ci.yml)
+
 Event-driven order fulfillment platform — Java 21, Spring Boot 3, Apache Kafka, Postgres, Docker. Four microservices coordinate an order through inventory reservation, payment, and shipping using a choreographed Saga, with oversell-safe stock reservation and compensating transactions on failure.
 
 This exists as a portfolio project demonstrating distributed-systems patterns that come up constantly in backend interviews: preventing overselling under concurrent load, keeping data consistent across services that each own their own database, and handling failure gracefully instead of leaving the system in a half-finished state.
