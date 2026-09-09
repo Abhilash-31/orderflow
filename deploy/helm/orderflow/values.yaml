@@ -65,13 +65,17 @@ kafka:
   port: 9092
   # No persistence, matching docker-compose — this is a single-node KRaft
   # broker for local/dev use, not a durability guarantee.
+  # Memory limit gives headroom above the -Xmx512m heap set in kafka.yaml
+  # (KAFKA_HEAP_OPTS) for metaspace, direct buffers, and page cache — the
+  # previous 1Gi limit with an unset (so JVM-default 1G) heap was getting
+  # the broker OOMKilled right after a clean startup.
   resources:
     requests:
       cpu: 250m
-      memory: 512Mi
+      memory: 768Mi
     limits:
       cpu: 1000m
-      memory: 1Gi
+      memory: 1536Mi
 
 # NodePort is the simplest way to reach services from the host on a kind
 # cluster without an Ingress controller. Set to "ClusterIP" if you're

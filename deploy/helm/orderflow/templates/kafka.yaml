@@ -46,6 +46,14 @@ spec:
               value: "1"
             - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
               value: "true"
+            # The Kafka launch script defaults to `-Xmx1G -Xms1G` whenever
+            # this isn't set — which, combined with the container's memory
+            # *limit* below, was getting the broker OOMKilled by the kernel
+            # shortly after a perfectly clean startup (no heap headroom left
+            # for metaspace/direct buffers/page cache). Pin it well under
+            # the limit instead.
+            - name: KAFKA_HEAP_OPTS
+              value: "-Xmx512m -Xms512m"
           readinessProbe:
             exec:
               command:

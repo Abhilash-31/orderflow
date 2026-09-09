@@ -99,6 +99,11 @@ jobs:
         run: |
           kubectl get pods -o wide
           kubectl get deployments,statefulsets,services
+          echo "----- describe: any pod with restarts -----"
+          for pod in $(kubectl get pods -o jsonpath='{range .items[?(@.status.containerStatuses[0].restartCount>0)]}{.metadata.name}{"\n"}{end}'); do
+            echo "===== describe: $pod ====="
+            kubectl describe pod "$pod"
+          done
 
       - name: Run happy-path demo through the cluster
         run: |
