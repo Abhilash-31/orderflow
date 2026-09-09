@@ -1,0 +1,80 @@
+# Default values for the orderflow chart.
+# Everything here mirrors docker-compose.yml so local kind behavior matches
+# local Docker Compose behavior — same images, same env var names, same
+# per-service databases.
+
+image:
+  # Built locally with `docker build` and loaded straight into the kind node
+  # with `kind load docker-image` — no registry involved for local dev.
+  # See deploy/helm/build-and-load-images.sh and ../../K8S.md.
+  repository: orderflow
+  tag: local
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 384Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# One Deployment + Service is generated per entry here (templates/microservices.yaml).
+# port must match the service's server.port in application.yml.
+services:
+  order-service:
+    port: 8081
+    dbName: orderdb
+    extraEnv: {}
+  inventory-service:
+    port: 8082
+    dbName: inventorydb
+    extraEnv: {}
+  payment-service:
+    port: 8083
+    dbName: paymentdb
+    extraEnv:
+      PAYMENT_DECLINE_THRESHOLD: "1000"
+  shipping-service:
+    port: 8084
+    dbName: shippingdb
+    extraEnv: {}
+
+postgres:
+  image: postgres:16-alpine
+  port: 5432
+  username: orderflow
+  password: orderflow
+  # orderdb is created via POSTGRES_DB; the other three are created by the
+  # init-multiple-dbs.sql ConfigMap mounted into /docker-entrypoint-initdb.d,
+  # same file used by docker-compose.
+  database: orderdb
+  storage: 1Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+kafka:
+  image: apache/kafka:3.7.0
+  port: 9092
+  # No persistence, matching docker-compose — this is a single-node KRaft
+  # broker for local/dev use, not a durability guarantee.
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+# NodePort is the simplest way to reach services from the host on a kind
+# cluster without an Ingress controller. Set to "ClusterIP" if you're
+# port-forwarding instead (see K8S.md). NodePort per service is computed as
+# 22000 + containerPort (8081 -> 30081, 8082 -> 30082, ...).
+serviceType: NodePort

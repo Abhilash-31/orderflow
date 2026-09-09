@@ -1,0 +1,93 @@
+{{/*
+One Deployment + Service per entry in .Values.services, so adding a fifth
+service later (e.g. an API gateway) is a values.yaml change, not a new
+template file. Every entry gets the same DB/Kafka wiring; only the port,
+target database, and any service-specific env vars differ.
+*/}}
+{{- range $name, $svc := .Values.services }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    app: {{ $name }}
+    {{- include "orderflow.labels" $ | nindent 4 }}
+spec:
+  replicas: {{ $.Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $name }}
+    spec:
+      containers:
+        - name: {{ $name }}
+          image: "{{ $.Values.image.repository }}/{{ $name }}:{{ $.Values.image.tag }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ $svc.port }}
+          env:
+            - name: DB_HOST
+              value: postgres
+            - name: DB_NAME
+              value: {{ $svc.dbName }}
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: orderflow-postgres
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: orderflow-postgres
+                  key: password
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:{{ $.Values.kafka.port }}"
+            {{- range $key, $val := $svc.extraEnv }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml $.Values.resources | nindent 12 }}
+          # Spring Boot auto-detects it's running under Kubernetes and splits
+          # /actuator/health into liveness/readiness groups once
+          # management.endpoint.health.probes.enabled=true (set in each
+          # service's application.yml) — these two probes are genuinely
+          # distinct, not both pointed at the same /health endpoint.
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: {{ $svc.port }}
+            initialDelaySeconds: 25
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: {{ $svc.port }}
+            initialDelaySeconds: 40
+            periodSeconds: 15
+            failureThreshold: 6
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    app: {{ $name }}
+    {{- include "orderflow.labels" $ | nindent 4 }}
+spec:
+  type: {{ $.Values.serviceType }}
+  selector:
+    app: {{ $name }}
+  ports:
+    - port: {{ $svc.port }}
+      targetPort: {{ $svc.port }}
+      {{- if eq $.Values.serviceType "NodePort" }}
+      nodePort: {{ add 22000 $svc.port }}
+      {{- end }}
+---
+{{- end }}

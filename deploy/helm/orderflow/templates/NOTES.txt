@@ -1,0 +1,29 @@
+OrderFlow is deploying to namespace "{{ .Release.Namespace }}".
+
+Watch it come up:
+  kubectl get pods -w -n {{ .Release.Namespace }}
+
+Kafka and Postgres need to be Ready before the four services pass their
+readiness probes — give it 1-2 minutes on first install.
+
+{{- if eq .Values.serviceType "NodePort" }}
+
+Once everything is Running/Ready, if you're on a kind cluster created with
+the extraPortMappings from K8S.md, the services are reachable directly on
+the host:
+
+  order-service:      http://localhost:8081
+  inventory-service:   http://localhost:8082
+  payment-service:     http://localhost:8083
+  shipping-service:    http://localhost:8084
+
+Otherwise, port-forward each one:
+  kubectl port-forward svc/order-service      8081:8081 -n {{ .Release.Namespace }}
+  kubectl port-forward svc/inventory-service  8082:8082 -n {{ .Release.Namespace }}
+  kubectl port-forward svc/payment-service    8083:8083 -n {{ .Release.Namespace }}
+  kubectl port-forward svc/shipping-service   8084:8084 -n {{ .Release.Namespace }}
+{{- end }}
+
+See K8S.md at the repo root for the full walkthrough, including the same
+three demo scenarios (happy path, oversell prevention, payment decline) used
+for the docker-compose setup.

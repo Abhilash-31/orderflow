@@ -1,0 +1,15 @@
+apiVersion: v2
+name: orderflow
+description: >
+  Event-driven order fulfillment platform (Java 21 / Spring Boot 3 / Kafka /
+  Postgres) — four choreographed microservices plus their Kafka and Postgres
+  dependencies, packaged for a local kind cluster or any standard Kubernetes
+  cluster.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - microservices
+  - kafka
+  - saga
+  - spring-boot

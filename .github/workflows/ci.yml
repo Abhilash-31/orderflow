@@ -50,5 +50,93 @@ jobs:
           docker build -f payment-service/Dockerfile -t orderflow/payment-service:ci .
           docker build -f shipping-service/Dockerfile -t orderflow/shipping-service:ci .
 
-# Roadmap (see README "Current status"): push to a registry (ECR) and deploy
-# to EKS via Helm once the Kubernetes/Terraform phase is built out.
+  # Real end-to-end verification of the Helm chart: stands up an actual kind
+  # cluster (not a `helm template`/lint dry run), builds the four images with
+  # the tag values.yaml expects, installs the chart, waits for every
+  # Deployment/StatefulSet to report Ready, then drives the same
+  # happy-path demo from K8S.md through the NodePort mapping and asserts the
+  # order actually reaches COMPLETED. This exists because the standard local
+  # dev machine story (Docker Desktop + kind on macOS) has known
+  # Testcontainers/Docker-socket quirks (see README) that don't affect a
+  # plain Ubuntu Docker daemon — so, same as the Testcontainers tests above,
+  # CI is the reliable place this gets proven end-to-end.
+  k8s-smoke-test:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.14.0
+        with:
+          cluster_name: orderflow
+          config: deploy/kind-cluster-config.yaml
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.15.4
+
+      - name: Build service images (tag matches values.yaml default)
+        run: |
+          docker build -f order-service/Dockerfile -t orderflow/order-service:local .
+          docker build -f inventory-service/Dockerfile -t orderflow/inventory-service:local .
+          docker build -f payment-service/Dockerfile -t orderflow/payment-service:local .
+          docker build -f shipping-service/Dockerfile -t orderflow/shipping-service:local .
+
+      - name: Load images into kind
+        run: |
+          kind load docker-image orderflow/order-service:local --name orderflow
+          kind load docker-image orderflow/inventory-service:local --name orderflow
+          kind load docker-image orderflow/payment-service:local --name orderflow
+          kind load docker-image orderflow/shipping-service:local --name orderflow
+
+      - name: helm install
+        run: helm install orderflow deploy/helm/orderflow --wait --timeout 5m
+
+      - name: Cluster state (always useful in logs)
+        if: always()
+        run: |
+          kubectl get pods -o wide
+          kubectl get deployments,statefulsets,services
+
+      - name: Run happy-path demo through the cluster
+        run: |
+          set -euo pipefail
+
+          curl -sf -X POST "http://localhost:8082/inventory/sku-widget/seed?quantity=10"
+
+          order_json=$(curl -sf -X POST http://localhost:8081/orders \
+            -H "Content-Type: application/json" \
+            -d '{"customerId":"cust-ci","items":[{"productId":"sku-widget","quantity":2,"unitPrice":19.99}]}')
+          echo "Create response: $order_json"
+          order_id=$(echo "$order_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['orderId'])")
+          echo "Created order $order_id"
+
+          for i in $(seq 1 30); do
+            status=$(curl -sf "http://localhost:8081/orders/$order_id" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])")
+            echo "poll $i: status=$status"
+            if [ "$status" = "COMPLETED" ]; then
+              echo "Order reached COMPLETED end-to-end through the kind cluster."
+              exit 0
+            fi
+            if [ "$status" = "CANCELLED" ]; then
+              echo "::error::Order was CANCELLED unexpectedly during the smoke test"
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "::error::Timed out waiting for order $order_id to reach COMPLETED"
+          exit 1
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          for svc in order-service inventory-service payment-service shipping-service kafka postgres; do
+            echo "===== logs: $svc ====="
+            kubectl logs -l app=$svc --tail=200 --prefix || true
+          done
+
+# Roadmap (see README "Current status"): push images to a registry (ECR) and
+# deploy this same Helm chart to a real EKS cluster once the Terraform/AWS
+# phase is built out.

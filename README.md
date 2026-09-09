@@ -78,13 +78,16 @@ mvn test
 
 The integration tests use Testcontainers, which needs Docker — they spin up real Postgres and Kafka containers rather than mocking them. The one worth reading first is `inventory-service`'s `OversellPreventionTest.concurrentReservations_forTheLastUnit_exactlyOneSucceeds` — it seeds exactly one unit of stock, fires ten concurrent reservation attempts at it, and asserts exactly one succeeds. That test is the actual proof behind the "prevents overselling under concurrent load" claim, not just a design intention.
 
+## Running it on Kubernetes
+
+There's a Helm chart at `deploy/helm/orderflow` that deploys the same four services plus Kafka and Postgres — StatefulSet for Postgres with a PVC, Deployments for everything else, readiness/liveness probes wired to each service's actuator health groups, resource requests/limits, the whole thing installable on a local `kind` cluster in a couple of commands. See `K8S.md` for the full walkthrough; it's the same three demo scenarios as above, just running as pods instead of compose containers. The `k8s-smoke-test` job in CI actually stands up a kind cluster and drives the happy-path demo through it on every push — not a `helm lint`/dry-run, a real cluster proving the chart genuinely works end to end.
+
 ## Current status / roadmap
 
-**Built:** the four services, the full choreographed Saga (happy path + both failure/compensation branches), oversell-safe reservation, Docker Compose for local dev, per-service Dockerfiles, a GitHub Actions CI pipeline (build + test + image build), and a Kafka consumer retry/backoff policy in Payment Service.
+**Built:** the four services, the full choreographed Saga (happy path + both failure/compensation branches), oversell-safe reservation, Docker Compose for local dev, per-service Dockerfiles, a Helm chart for Kubernetes (Postgres StatefulSet + PVC, Kafka, and the four services with health probes and resource limits), a GitHub Actions CI pipeline (build + test + image build + an end-to-end kind cluster smoke test), and a Kafka consumer retry/backoff policy in Payment Service.
 
 **Not yet built** — in priority order:
-- **Kubernetes + Helm.** Deploy the four services to a local cluster (`kind`) first, then EKS.
-- **Terraform (AWS).** VPC, EKS, RDS (one instance per service, replacing the single shared Postgres container), MSK or self-hosted Kafka on EKS, ECR.
+- **Terraform (AWS).** VPC, EKS, RDS (one instance per service, replacing the single shared Postgres container), MSK or self-hosted Kafka on EKS, ECR — the natural next step now that the Helm chart exists to deploy with.
 - **Observability.** Prometheus/Grafana dashboards (Actuator's `/actuator/prometheus` is already exposed on every service, just not scraped yet), OpenTelemetry tracing through Jaeger so a single order can be followed across all four services.
 - **Resilience4j circuit breakers/bulkheads** around inter-service-adjacent calls (Payment Service's Kafka retry/backoff is a first step in this direction, not the full picture).
 - **API Gateway** (Spring Cloud Gateway) as a single entry point instead of hitting each service's port directly.
@@ -99,6 +102,13 @@ orderflow/
 ├── inventory-service/   # stock, oversell-safe reservation
 ├── payment-service/     # mock payment authorization
 ├── shipping-service/    # shipment creation
+├── deploy/
+│   ├── kind-cluster-config.yaml
+│   └── helm/
+│       ├── orderflow/          # the Helm chart
+│       └── build-and-load-images.sh
 ├── docker-compose.yml
+├── K8S.md
+├── RUNNING_LOCALLY.md
 └── .github/workflows/ci.yml
 ```

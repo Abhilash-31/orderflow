@@ -1,0 +1,16 @@
+# A single-node kind cluster with the four services' NodePorts mapped
+# straight through to the same host ports docker-compose used (8081-8084),
+# so the exact same curl commands from RUNNING_LOCALLY.md work unchanged.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30081
+        hostPort: 8081
+      - containerPort: 30082
+        hostPort: 8082
+      - containerPort: 30083
+        hostPort: 8083
+      - containerPort: 30084
+        hostPort: 8084
