@@ -1,0 +1,47 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: order-service
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:orderdb}
+    username: ${DB_USER:orderflow}
+    password: ${DB_PASSWORD:orderflow}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: order-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        # Each service consumes several distinct event types across different
+        # topics/listeners. JsonSerializer stamps a __TypeId__ header with the
+        # fully-qualified class name on publish; since every service depends
+        # on the same common-events jar, JsonDeserializer can resolve that
+        # header straight back to the correct record class on this side
+        # without needing an explicit type mapping.
+        spring.json.trusted.packages: "com.orderflow.events"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+logging:
+  level:
+    com.orderflow: INFO

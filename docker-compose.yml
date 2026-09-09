@@ -1,0 +1,120 @@
+version: "3.8"
+
+# One command spins up the whole platform locally: Kafka, one Postgres
+# instance hosting the four per-service databases, and all four services.
+# See README.md for the walkthrough (placing an order, forcing the
+# oversell-prevention path, forcing the payment-decline/compensation path).
+
+services:
+
+  kafka:
+    image: bitnami/kafka:3.7
+    container_name: orderflow-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_ENABLE_KRAFT: "yes"
+      KAFKA_CFG_PROCESS_ROLES: "broker,controller"
+      KAFKA_CFG_NODE_ID: "1"
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: orderflow-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: orderdb
+      POSTGRES_USER: orderflow
+      POSTGRES_PASSWORD: orderflow
+    volumes:
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d
+      - orderflow-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orderflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  order-service:
+    build:
+      context: .
+      dockerfile: order-service/Dockerfile
+    container_name: orderflow-order-service
+    ports:
+      - "8081:8081"
+    environment:
+      DB_HOST: postgres
+      DB_NAME: orderdb
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  inventory-service:
+    build:
+      context: .
+      dockerfile: inventory-service/Dockerfile
+    container_name: orderflow-inventory-service
+    ports:
+      - "8082:8082"
+    environment:
+      DB_HOST: postgres
+      DB_NAME: inventorydb
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: payment-service/Dockerfile
+    container_name: orderflow-payment-service
+    ports:
+      - "8083:8083"
+    environment:
+      DB_HOST: postgres
+      DB_NAME: paymentdb
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      PAYMENT_DECLINE_THRESHOLD: 1000
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  shipping-service:
+    build:
+      context: .
+      dockerfile: shipping-service/Dockerfile
+    container_name: orderflow-shipping-service
+    ports:
+      - "8084:8084"
+    environment:
+      DB_HOST: postgres
+      DB_NAME: shippingdb
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+volumes:
+  orderflow-pgdata:

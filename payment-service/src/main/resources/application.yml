@@ -1,0 +1,43 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: payment-service
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:paymentdb}
+    username: ${DB_USER:orderflow}
+    password: ${DB_PASSWORD:orderflow}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: payment-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.orderflow.events"
+
+payment:
+  # Orders above this amount are deterministically declined by the mock
+  # authorizer — a reliable way to demo the failure/compensation path.
+  decline-threshold: 1000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+logging:
+  level:
+    com.orderflow: INFO
